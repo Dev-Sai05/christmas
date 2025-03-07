@@ -17,46 +17,33 @@ public class MRE1Service_Child {
     private static final int NUM_RUN_UNITS = 5;
     private final ExecutorService executor = Executors.newFixedThreadPool(NUM_RUN_UNITS);
     private final List<RunUnit> runUnits = new ArrayList<>();
-    private int runUnitIndex = 0;
     private final Object lock = new Object();
-    private volatile long lastTransactionTime = System.currentTimeMillis();
     private final ScheduledExecutorService shutdownScheduler = Executors.newSingleThreadScheduledExecutor();
-    private volatile boolean shutdownInProgress = false; // Flag to prevent shutdown during active transactions
-
+    private volatile long lastRequestTime = System.currentTimeMillis();
+    
     public MRE1Service_Child() {
-        // Initialize RunUnit instances
         for (int i = 0; i < NUM_RUN_UNITS; i++) {
             runUnits.add(new RunUnit());
         }
 
-        // Schedule periodic cleanup (runs every 6 seconds)
-        shutdownScheduler.scheduleWithFixedDelay(this::checkAndShutdown, 6, 6, TimeUnit.SECONDS);
+        // Schedule periodic shutdown check every 6 seconds
+        shutdownScheduler.scheduleAtFixedRate(this::shutdownIfIdle, 6, 6, TimeUnit.SECONDS);
     }
 
     public List<String> callMre1Child(String transactiontype, String productcode, String branchno, 
                                       String referencenum, String accountno, String commonArea, 
                                       Connection connection) throws InterruptedException, ExecutionException {
 
-        if (shutdownInProgress) {
-            throw new RejectedExecutionException("Service is shutting down, cannot accept new transactions.");
-        }
+        lastRequestTime = System.currentTimeMillis(); // Reset idle timer
 
         logger.info("VC------------------------MRE1 Child Service Started------------------------VC");
 
-        int assignedIndex;
-        synchronized (lock) {
-            assignedIndex = runUnitIndex;
-            runUnitIndex = (runUnitIndex + 1) % NUM_RUN_UNITS; // Round-robin logic
-        }
-
-        lastTransactionTime = System.currentTimeMillis(); // Update last transaction time
-
-        // Submit transaction execution asynchronously
+        int assignedIndex = (int) (Thread.currentThread().getId() % NUM_RUN_UNITS);
         Future<List<String>> future = executor.submit(() -> executeTransaction(
             transactiontype, productcode, branchno, referencenum, accountno, commonArea, connection, assignedIndex
         ));
 
-        List<String> result = future.get(); // Wait for execution to complete
+        List<String> result = future.get();
 
         logger.info("VC------------------------MRE1 Child Service Ended------------------------VC");
         return result;
@@ -66,11 +53,7 @@ public class MRE1Service_Child {
                                             String referencenum, String accountno, String commonArea, 
                                             Connection connection, int assignedIndex) {
 
-        RunUnit runUnit;
-        synchronized (lock) {
-            runUnit = runUnits.get(assignedIndex); // Get assigned RunUnit
-        }
-
+        RunUnit runUnit = runUnits.get(assignedIndex);
         JVME1MR jvmmre1 = new JVME1MR();
 
         LsTransactionType input2 = new LsTransactionType();
@@ -118,30 +101,22 @@ public class MRE1Service_Child {
         }
     }
 
-    private void checkAndShutdown() {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastTransactionTime >= 6000) { // No transactions in the last 6 seconds
+    private void shutdownIfIdle() {
+        long idleTime = System.currentTimeMillis() - lastRequestTime;
+        if (idleTime >= 6000) { // If idle for 6+ seconds, shutdown
             shutdown();
         }
     }
 
     public void shutdown() {
+        logger.info("Shutting down executor and RunUnits due to inactivity.");
+        executor.shutdown();
         synchronized (lock) {
-            if (shutdownInProgress) return; // Prevent duplicate shutdown calls
-
-            shutdownInProgress = true;
-            logger.info("Shutting down service...");
-            
-            executor.shutdown();
-            shutdownScheduler.shutdown();
-
             for (RunUnit runUnit : runUnits) {
                 runUnit.close();
             }
-            runUnits.clear();
-
-            shutdownInProgress = false;
-            logger.info("MRE1Service_Child shutdown complete.");
         }
+        shutdownScheduler.shutdown();
+        logger.info("MRE1Service_Child shutdown complete.");
     }
 }
