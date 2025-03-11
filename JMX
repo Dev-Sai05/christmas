@@ -1,0 +1,224 @@
+Here are the detailed steps to monitor your runnable JAR service deployed on a Tanzu cluster using VisualVM for MBeans, CPU, and memory utilization.
+
+
+---
+
+Step 1: Enable JMX in Your Service
+
+To allow VisualVM to connect and monitor your Java application, you must enable Java Management Extensions (JMX).
+
+1.1 Modify Your Java Service Start Command
+
+If you are running the JAR manually, start it with these JVM options:
+
+java -Dcom.sun.management.jmxremote \
+     -Dcom.sun.management.jmxremote.port=9999 \
+     -Dcom.sun.management.jmxremote.local.only=false \
+     -Dcom.sun.management.jmxremote.authenticate=false \
+     -Dcom.sun.management.jmxremote.ssl=false \
+     -jar your-service.jar
+
+Port 9999 is the JMX remote port (you can change it if needed).
+
+Authentication & SSL are disabled for simplicity (use security settings in production).
+
+
+1.2 Configure JMX in Your Tanzu Deployment
+
+If your JAR is running inside a Tanzu Kubernetes cluster, modify the Kubernetes Deployment YAML to pass JMX options:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: your-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: your-service
+  template:
+    metadata:
+      labels:
+        app: your-service
+    spec:
+      containers:
+      - name: your-service
+        image: your-service-image
+        ports:
+        - containerPort: 9999
+        env:
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+
+This ensures the JAR runs with JMX enabled inside the Tanzu cluster.
+
+
+
+---
+
+Step 2: Expose JMX Port from Tanzu Cluster
+
+To connect VisualVM to the service inside the cluster, you need to expose port 9999.
+
+2.1 Use Port Forwarding (Recommended for Local Debugging)
+
+Run this command to forward the JMX port from the Tanzu pod to your local machine:
+
+kubectl port-forward pod/your-pod-name 9999:9999
+
+Replace your-pod-name with the actual pod name.
+
+This allows VisualVM to connect via localhost:9999.
+
+
+2.2 Use a Kubernetes Service to Expose JMX
+
+Modify your Service YAML to expose JMX externally:
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: your-service
+spec:
+  type: NodePort
+  ports:
+  - port: 9999
+    targetPort: 9999
+    nodePort: 30999
+  selector:
+    app: your-service
+
+This exposes the JMX port on NodePort 30999.
+
+You can now access JMX on <NODE_IP>:30999.
+
+
+
+---
+
+Step 3: Connect VisualVM to Your Service
+
+Now, use VisualVM to connect to the service.
+
+3.1 Install VisualVM and MBeans Plugin
+
+1. Download and Install VisualVM.
+
+
+2. Open VisualVM.
+
+
+3. Install MBeans Plugin:
+
+Go to Tools → Plugins.
+
+Find VisualVM-MBeans Plugin and install it.
+
+Restart VisualVM.
+
+
+
+
+3.2 Add a Remote JMX Connection
+
+1. Open VisualVM.
+
+
+2. Click File → Add Remote Host.
+
+
+3. Enter the Tanzu Node’s IP.
+
+
+4. Right-click the new host and select Add JMX Connection.
+
+
+5. Enter the connection string:
+
+service:jmx:rmi:///jndi/rmi://<NODE_IP>:9999/jmxrmi
+
+
+6. Click OK and open the connection.
+
+
+
+> For Port Forwarding: Use localhost:9999 instead of <NODE_IP>:9999.
+
+
+
+
+---
+
+Step 4: Monitor CPU, Memory, and MBeans
+
+Once connected, explore VisualVM’s features:
+
+4.1 View CPU & Memory Usage
+
+Click the Monitor tab to see:
+
+CPU Usage
+
+Heap & Non-Heap Memory
+
+Garbage Collection (GC) Activity
+
+Thread Count
+
+
+
+4.2 Browse MBeans
+
+Click the MBeans tab.
+
+Expand java.lang for system MBeans like:
+
+java.lang:type=Memory → Monitor heap memory.
+
+java.lang:type=GarbageCollector → View GC stats.
+
+java.lang:type=Threading → Monitor threads.
+
+
+Expand your custom application MBeans (if available).
+
+
+4.3 Take Heap Dump (Optional)
+
+Click Heap Dump to analyze memory usage.
+
+Save and open the heap dump for memory leak detection.
+
+
+
+---
+
+Step 5: Troubleshooting
+
+Issue: Connection Refused
+
+✔️ Ensure JMX is enabled in JAVA_TOOL_OPTIONS.
+✔️ Check firewall settings if connecting remotely.
+✔️ Use port forwarding to avoid network issues.
+
+Issue: MBeans Tab Missing
+
+✔️ Install the MBeans plugin from Tools → Plugins.
+
+Issue: High Memory Usage
+
+✔️ Monitor heap usage and garbage collection in the Memory tab.
+✔️ Use heap dumps to detect memory leaks.
+
+
+---
+
+Summary of Steps
+
+✅ Enable JMX in Java service.
+✅ Expose JMX port (via Port Forwarding or NodePort).
+✅ Connect VisualVM to the JMX service.
+✅ Monitor CPU, Memory, and MBeans.
+
+Would you like help analyzing memory issues or optimizing performance?
+
