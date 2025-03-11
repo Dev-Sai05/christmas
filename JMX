@@ -222,3 +222,151 @@ Summary of Steps
 
 Would you like help analyzing memory issues or optimizing performance?
 
+
+apiVersion: v1
+items:
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    labels:
+      app.kubernetes.io/managed-by: Helm
+      run: vc-e1mr
+    name: vc-e1mr
+    namespace: cbs
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        run: vc-e1mr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        labels:
+          run: vc-e1mr
+      spec:
+        automountServiceAccountToken: false
+        containers:
+        - envFrom:
+          - secretRef:
+              name: daydbdetails
+          - secretRef:
+              name: nightdbdetails
+          - secretRef:
+              name: refdbdetails
+          - secretRef:
+              name: envdetails
+          image: tkgsharedharbor.corp.ad.sbi/cbsdev/vc-e1mr:1.4
+          imagePullPolicy: Always
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8085
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: vc-e1mr
+          ports:
+          - containerPort: 80
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8085
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: "1"
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/TCS/MetaData/SystemLogs
+            name: systemlogs
+          - mountPath: /tmp
+            name: tmpdir
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext:
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - emptyDir: {}
+          name: tmpdir
+        - emptyDir: {}
+          name: systemlogs
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+    name: vc-e1mr
+    namespace: cbs
+  spec:
+    ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8085
+    selector:
+      run: vc-e1mr
+    sessionAffinity: None
+    type: NodePort
+- apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: vc-e1mr
+    namespace: cbs
+  spec:
+    maxReplicas: 1
+    metrics:
+    - resource:
+        name: memory
+        target:
+          averageUtilization: 75
+          type: Utilization
+      type: Resource
+    - resource:
+        name: cpu
+        target:
+          averageUtilization: 75
+          type: Utilization
+      type: Resource
+    minReplicas: 1
+    scaleTargetRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: vc-e1mr
+kind: List
+metadata:
+  resourceVersion: ""
+  selfLink: ""
+
+
+
+
