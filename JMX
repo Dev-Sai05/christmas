@@ -1,3 +1,25 @@
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: vc-e1mr
+    namespace: cbs
+  spec:
+    ports:
+    - name: http-port  # 🔹 Added name for HTTP
+      port: 80
+      protocol: TCP
+      targetPort: 8085
+    - name: jmx-port  # 🔹 Added name for JMX
+      port: 9999
+      protocol: TCP
+      targetPort: 9999
+      nodePort: 30999
+    selector:
+      run: vc-e1mr
+    sessionAffinity: None
+    type: NodePort
+
+
 Here are the detailed steps to monitor your runnable JAR service deployed on a Tanzu cluster using VisualVM for MBeans, CPU, and memory utilization.
 
 
