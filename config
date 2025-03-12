@@ -1,0 +1,7 @@
+server.tomcat.max-connections=1000
+server.tomcat.accept-count=200
+server.tomcat.threads.max=400
+server.tomcat.threads.min-spare=50
+server.connection-timeout=30000
+server.tomcat.keep-alive-timeout=15000
+server.tomcat.max-http-header-size=16KB
